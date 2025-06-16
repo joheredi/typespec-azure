@@ -14,7 +14,6 @@ import {
 } from "@typespec/compiler";
 import { $ } from "@typespec/compiler/typekit";
 import { isHeader } from "@typespec/http";
-import "@typespec/http-client/typekit";
 import { createSdkClientType } from "./clients.js";
 import {
   getAccess,
@@ -125,15 +124,8 @@ function getSdkPagingServiceMethod<TServiceOperation extends SdkServiceOperation
 
   // normal paging
   if (isList(context.program, operation)) {
-    const clientPagingMetadata = $(context.program).operation.getPagingClientMetadata(
-      getOverriddenClientMethod(context, operation) ?? operation,
-    );
-
-    if (
-      responseType?.__raw?.kind !== "Model" ||
-      responseType.kind !== "model" ||
-      !clientPagingMetadata
-    ) {
+    const x = $(context.program).operation.getPagingMetadata(operation);
+    if (responseType?.__raw?.kind !== "Model" || responseType.kind !== "model" || !x) {
       diagnostics.add(
         createDiagnostic({
           code: "unexpected-pageable-operation-return-type",
@@ -152,15 +144,15 @@ function getSdkPagingServiceMethod<TServiceOperation extends SdkServiceOperation
     }
 
     const resultSegments = mapFirstSegmentForResultSegments(
-      clientPagingMetadata.pageItemsSegments,
+      x.output.pageItems.path,
       baseServiceMethod.response,
     );
     const nextLinkSegments = mapFirstSegmentForResultSegments(
-      clientPagingMetadata.nextLinkSegments,
+      x.output.nextLink?.path,
       baseServiceMethod.response,
     );
     const continuationTokenResponseSegments = mapFirstSegmentForResultSegments(
-      clientPagingMetadata.continuationTokenResponseSegments,
+      x.output.continuationToken?.path,
       baseServiceMethod.response,
     );
 
@@ -169,30 +161,24 @@ function getSdkPagingServiceMethod<TServiceOperation extends SdkServiceOperation
     );
 
     context.__pagedResultSet.add(responseType);
-    const pagingMetadata = $(context.program).operation.getPagingMetadata(operation);
     // tcgc will let all paging method return a list of items
     baseServiceMethod.response.type = diagnostics.pipe(
-      getClientTypeWithDiagnostics(
-        context,
-        pagingMetadata!.output.pageItems.property.type,
-        operation,
-      ),
+      getClientTypeWithDiagnostics(context, x.output.pageItems.property.type, operation),
     );
 
     return diagnostics.wrap({
       ...baseServiceMethod,
       kind: "paging",
       pagingMetadata: {
-        __raw: pagingMetadata,
+        __raw: x,
         nextLinkSegments: nextLinkSegments?.map(
           (segment) =>
             context.__responseHeaderCache.get(segment) ??
             context.__modelPropertyCache.get(segment)!,
         ),
-        continuationTokenParameterSegments:
-          clientPagingMetadata.continuationTokenParameterSegments?.map(
-            (r) => context.__methodParameterCache.get(r) ?? context.__modelPropertyCache.get(r)!,
-          ),
+        continuationTokenParameterSegments: x.input.continuationToken?.path.map(
+          (r) => context.__methodParameterCache.get(r) ?? context.__modelPropertyCache.get(r)!,
+        ),
         continuationTokenResponseSegments: continuationTokenResponseSegments?.map(
           (segment) =>
             context.__responseHeaderCache.get(segment) ??
